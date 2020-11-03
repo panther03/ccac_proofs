@@ -4,11 +4,15 @@ import data.real.basic
 
 theorem nat_real_le : ∀(x y : ℕ), x ≤ y → (↑x : ℝ) ≤ (↑y : ℝ) := sorry
 
-theorem nat_real_succ : ∀x:ℕ, (↑(nat.succ x) : ℝ) = 1 + ↑x := sorry
+theorem nat_real_add : ∀(x y : ℕ), ↑(x + y) = (↑x : ℝ) + ↑y := by {intro, simp}
+
+theorem nat_real_succ : ∀x:ℕ, (↑(nat.succ x) : ℝ) = 1 + ↑x := by {intro x, simp}
 
 theorem nat_real_sub : ∀(x y : ℕ), y ≤ x → ↑(x - y) = (↑x: ℝ) - ↑y := sorry
 
 theorem nat_le_succ_sub : ∀(x y : ℕ), x - y ≤ (nat.succ x) - y := sorry
+
+theorem nat_sub_add : ∀(x y z : ℕ), x - (y + z) = x - y - z := sorry
 
 structure Trace :=
 (C : ℝ) (D : ℕ) (out inp wst: ℕ → ℝ)
@@ -171,31 +175,59 @@ begin
 
     -- Use h_lower_le_upper to prove constraint_l
     have h_constraint_l :
-        ∀t, τ₂.out t ≥ τ₁.C * (t - τ₁.D - τ₂.D) - τ₁.wst (t - τ₁.D - τ₂.D) :=
+        ∀t, τ₂.out t ≥ τ₁.C * (t -(τ₁.D + τ₂.D)) - τ₁.wst (t - (τ₁.D + τ₂.D)) :=
     begin
         intro t,
+        by_cases h_t_vs_D : (t ≤ τ₁.D + τ₂.D),
+        -- Case: t < τ₁.D + τ₂.D
+        have h_t_le_D := nat.sub_eq_zero_of_le h_t_vs_D,
+        rw h_t_le_D, rw τ₁.zero_wst, simp,
+        have h_wst_u_bound := τ₂.wst_u_bound (nat.succ t),
+        let h_t_vs_D := nat_real_le _ _ h_t_vs_D,
+        rw nat_real_add at h_t_vs_D,
+        let h_τ₂_C_pos := τ₁.pos_C,
+        have h₀ : ↑t + (-(↑τ₁.D : ℝ) + -↑(τ₂.D)) ≤ 0, by linarith,
+        have h₁ : τ₁.C * (↑t + (-(↑τ₁.D : ℝ) + -↑(τ₂.D))) ≤ 0, 
+            by exact linarith.mul_nonpos h₀ h_τ₂_C_pos,
+        apply (le_trans h₁),
+        apply (τ₂.out_nonneg t),
+
+        -- Case: t ≥ τ₁.D + τ₂.D
+        simp at h_t_vs_D,
         -- Bring in things we already know
-        specialize h_lower_le_upper t,
+        specialize h_lower_le_upper (t - τ₂.D),
         let h_τ₂_constraint_l := τ₂.constraint_l t,
         let h_τ₁_constraint_l := τ₁.constraint_l (t - τ₂.D),
         let h_τ₁_constraint_u := τ₁.constraint_u (t - τ₂.D),
-        rw nat_real_sub at h_τ₁_constraint_l, rw nat_real_sub at h_τ₁_constraint_u,
+        unfold Trace.upper at *,
+        unfold Trace.lower at *,
+        rw ←nat_sub_add at h_τ₁_constraint_l,
+        rw nat_real_sub at h_τ₁_constraint_l, rw nat_real_add at h_τ₁_constraint_l,
+        rw nat_real_sub at h_τ₁_constraint_u,
         let h_τ₁_out_le_inp := τ₁.out_le_inp t,
 
+        apply (ge_trans h_τ₂_constraint_l),
+        clear h_τ₂_constraint_l,
+
+        have h_t_ge_τ₂_D : τ₂.D ≤ t, by linarith,
+        rw (nat_real_sub _ _ h_t_ge_τ₂_D), rw (nat_real_sub _ _ h_t_ge_τ₂_D) at *,
+        rw ←nat_sub_add at h_lower_le_upper,
+
+        rw add_comm at h_t_vs_D,
+        let h_t_vs_D := le_of_lt h_t_vs_D,
+        rw (nat_real_sub t (τ₂.D + τ₁.D) h_t_vs_D) at h_lower_le_upper,
+        rw nat.add_comm, rw nat_sub_add,
+
+        rw nat_sub_add at h_lower_le_upper,
+
         -- Apply distributive law everywhere
-        rw mul_sub at *, rw mul_sub,
+        rw nat_real_add at *, 
+        rw mul_sub at *, rw mul_sub at *, rw mul_add at *, 
+        
+        linarith,
 
-        apply (ge_trans h_τ₂_constraint_l), rw ←hc,
-
-        have h₀ : τ₁.wst (t - τ₂.D) ≤ τ₁.C * ↑(τ₁.D) + τ₁.wst (t - τ₁.D - τ₂.D), 
-            by linarith [h_τ₁_constraint_u, h_τ₁_constraint_l],
-
-/-         h_τ₁_constraint_u : τ₁.out t ≤ τ₁.C * ↑t - τ₁.wst t := Trace.constraint_u τ₁ t,
-        h_τ₁_out_le_inp : τ₁.out t ≤ τ₁.inp t := Trace.out_le_inp τ₁ t,
-        h_τ₂_constraint_l : τ₂.out t ≥ τ₂.C * ↑t - τ₂.C * ↑(τ₂.D) - τ₂.wst (t - τ₂.D),
-        h_τ₁_constraint_l : τ₁.out t ≥ τ₁.C * ↑t - τ₁.C * ↑(τ₁.D) - τ₁.wst (t - τ₁.D),
- -/
-        sorry,
+        -- Now main part of the proof is done. Tie up some loose ends
+        linarith, linarith,
     end,
 
     sorry,
