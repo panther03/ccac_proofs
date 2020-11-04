@@ -15,35 +15,31 @@ theorem nat_le_succ_sub : ∀(x y : ℕ), x - y ≤ (nat.succ x) - y := sorry
 theorem nat_sub_add : ∀(x y z : ℕ), x - (y + z) = x - y - z := sorry
 
 structure Trace :=
-(C : ℝ) (D : ℕ) (out inp wst: ℕ → ℝ)
+    (C : ℝ) (D : ℕ) (out inp wst: ℕ → ℝ)
 
+    (pos_C : C > 0)
+    (nonneg_D : D ≥ 0)
+
+    (constraint_u : ∀t, out t ≤ C * t - wst t)
+    (constraint_l : ∀t, out t ≥ C * ↑(t - D) - wst (t - D))
+
+    (cond_waste :
+        ∀t, wst t < wst (t+1) 
+        → inp (1 + t) ≤ C * ↑(1 + t) - wst (1 + t))
+    
+    (out_le_inp : ∀t, out t ≤ inp t)
+    
+    (monotone_out : monotone out)
+    (monotone_inp : monotone inp)
+    (monotone_wst : monotone wst)
+    
+    (zero_out : out 0 = 0)
+    (zero_inp : inp 0 = 0)
+    (zero_wst : wst 0 = 0)
+    
 namespace Trace
-    def pos_C (τ : Trace) : τ.C > 0 := sorry
-    def nonneg_D (τ : Trace) : τ.D ≥ 0 := sorry
-
     def upper (τ : Trace) (t : ℕ) := τ.C * t - τ.wst t
     def lower (τ : Trace) (t : ℕ) := τ.C * ↑(t - τ.D) - τ.wst (t - τ.D)
-
-    def constraint_u (τ : Trace) :
-        ∀t, τ.out t ≤ τ.upper t := sorry    
-    def constraint_l (τ : Trace) :
-        ∀t, τ.out t ≥ τ.lower t := sorry
-
-    def cond_waste (τ : Trace) :
-        ∀t, τ.wst t < τ.wst (t+1) 
-        → τ.inp (1 + t) ≤ τ.upper (1 + t) := sorry
-    
-    def out_le_inp (τ : Trace) :
-        ∀t, τ.out t ≤ τ.inp t := sorry
-    
-    def monotone_out (τ : Trace) : monotone τ.out := sorry
-    def monotone_inp (τ : Trace) : monotone τ.inp := sorry
-    def monotone_wst (τ : Trace) : monotone τ.wst := sorry
-
-    def zero_out (τ : Trace) : τ.out 0 = 0 := sorry
-    def zero_inp (τ : Trace) : τ.inp 0 = 0 := sorry
-    def zero_wst (τ : Trace) : τ.wst 0 = 0 := sorry
-
 
     lemma out_nonneg : ∀(τ : Trace), ∀(t : ℕ), 0 ≤ τ.out t :=
     begin
@@ -66,7 +62,6 @@ namespace Trace
     begin
         intros τ t,
         have h_constraint_u := τ.constraint_u t,
-        unfold Trace.upper at h_constraint_u,
         have h_out_nonneg := τ.out_nonneg t,
         linarith,
     end
@@ -79,9 +74,9 @@ theorem trace_composes :
         τ₁.out = τ₂.inp
     → ∃(τₛ : Trace),
         τₛ.C = τ₁.C ∧
-        τₛ.D = τ₁.D + τ₁.D ∧
+        τₛ.D = τ₁.D + τ₂.D ∧
         τₛ.inp = τ₁.inp ∧
-        τₛ.out = τ₁.out :=
+        τₛ.out = τ₂.out :=
 begin
     intros τ₁ τ₂ h, cases h with hc h₁₂,
     -- We will set τₛ.wst = τ₁.wst. Let's start proving the theorems 
@@ -132,7 +127,6 @@ begin
         have h_τ₂_wst_nondec: τ₂.wst t_n ≤ τ₂.wst (nat.succ t_n), by sorry,
         have h_τ₂_wst_cond : τ₂.wst t_n = τ₂.wst (nat.succ t_n) ∨ τ₂.wst t_n < τ₂.wst (nat.succ t_n), from (eq_or_lt_of_le h_τ₂_wst_nondec),
         let h_τ₂_constraint_l := τ₁.constraint_l (nat.succ t_n),
-        unfold Trace.lower at h_τ₂_constraint_l,
 
         -- rewrite (t - D) as ↑t - ↑D
         rw (nat_real_sub t_n τ₁.D h_t_vs_D) at t_ih,
@@ -158,7 +152,6 @@ begin
         { -- τ₂.wst increases
             -- use τ₂.cond_waste
             let h_cond_waste := τ₂.cond_waste t_n h_τ₂_wst_cond,
-            unfold Trace.upper at h_cond_waste,
             rw nat.one_add t_n at h_cond_waste, rw (nat_real_succ t_n) at h_cond_waste,
             -- τ₂'s input is τ₁'s output
             rw ←h₁₂ at h_cond_waste,
@@ -175,7 +168,7 @@ begin
 
     -- Use h_lower_le_upper to prove constraint_l
     have h_constraint_l :
-        ∀t, τ₂.out t ≥ τ₁.C * (t -(τ₁.D + τ₂.D)) - τ₁.wst (t - (τ₁.D + τ₂.D)) :=
+        ∀t, τ₂.out t ≥ τ₁.C * (t - (τ₁.D + τ₂.D)) - τ₁.wst (t - (τ₁.D + τ₂.D)) :=
     begin
         intro t,
         by_cases h_t_vs_D : (t ≤ τ₁.D + τ₂.D),
@@ -229,6 +222,55 @@ begin
         -- Now main part of the proof is done. Tie up some loose ends
         linarith, linarith,
     end,
+    -- Proved a slightly different version. Fix it now
+    have h_constraint_l : ∀ (t : ℕ), τ₂.out t ≥ τ₁.C * ↑(t - (τ₁.D + τ₂.D)) - τ₁.wst (t - (τ₁.D + τ₂.D)) :=
+    begin
+        intro t, specialize (h_constraint_l t),
+        rw ←nat_real_add at h_constraint_l,
 
-    sorry,
+        by_cases h_t_vs_D : t ≤ τ₁.D + τ₂.D,
+        -- Case: t ≤ τ₁.D + τ₂.D
+        let h₀ := nat.sub_eq_zero_of_le h_t_vs_D,
+        rw h₀, simp, rw τ₁.zero_wst,
+        rw neg_zero,
+        exact (τ₂.out_nonneg t),
+
+        -- Case: t > τ₁.D + τ₂.D
+        simp at h_t_vs_D,
+        let h₀ := le_of_lt h_t_vs_D,
+        let h₁ := (nat_real_sub _ _ h₀),
+        rw h₁,
+        exact h_constraint_l,
+    end,
+
+    -- Now prove some of the little theorems
+    have h_out_le_inp : ∀t, τ₂.out t ≤ τ₁.inp t, {
+        intro t, 
+        apply (le_trans (τ₂.out_le_inp t)),
+        rw ←h₁₂,
+        exact (τ₁.out_le_inp t),
+    },
+
+    -- Note: τₛ.cond_waste = τ₁.cond_waste
+    --have h_cond_waste : 
+
+    have h_τₛ_nonneg_D : τ₁.D + τ₂.D ≥ 0, 
+        by linarith [τ₁.nonneg_D, τ₂.nonneg_D],
+
+    -- Finally construct our witness
+    let τₛ := Trace.mk τ₁.C (τ₁.D + τ₂.D) τ₂.out τ₁.inp τ₁.wst 
+        τ₁.pos_C h_τₛ_nonneg_D
+        h_constraint_u
+        h_constraint_l
+        τ₁.cond_waste
+        h_out_le_inp
+        τ₂.monotone_out
+        τ₁.monotone_inp
+        τ₁.monotone_wst
+        τ₂.zero_out
+        τ₁.zero_inp
+        τ₁.zero_wst,
+    existsi τₛ,
+    repeat {split, reflexivity},
+    reflexivity,
 end
