@@ -36,7 +36,8 @@ structure Trace :=
     (zero_out : out 0 = 0)
     (zero_inp : inp 0 = 0)
     (zero_wst : wst 0 = 0)
-    
+
+-- Useful lemmas    
 namespace Trace
     def upper (τ : Trace) (t : ℕ) := τ.C * t - τ.wst t
     def lower (τ : Trace) (t : ℕ) := τ.C * ↑(t - τ.D) - τ.wst (t - τ.D)
@@ -65,12 +66,11 @@ namespace Trace
         have h_out_nonneg := τ.out_nonneg t,
         linarith,
     end
-
 end Trace
 
 theorem trace_composes :
     ∀(τ₁ τ₂ : Trace),
-        τ₁.C = τ₂.C ∧
+        τ₁.C ≤ τ₂.C ∧
         τ₁.out = τ₂.inp
     → ∃(τₛ : Trace),
         τₛ.C = τ₁.C ∧
@@ -124,7 +124,8 @@ begin
             apply τ₁.monotone_wst, apply nat_le_succ_sub,
         },
 
-        have h_τ₂_wst_nondec: τ₂.wst t_n ≤ τ₂.wst (nat.succ t_n), by sorry,
+        have h_τ₂_wst_nondec: τ₂.wst t_n ≤ τ₂.wst (nat.succ t_n),
+            { apply τ₂.monotone_wst, exact nat.le_succ t_n, },
         have h_τ₂_wst_cond : τ₂.wst t_n = τ₂.wst (nat.succ t_n) ∨ τ₂.wst t_n < τ₂.wst (nat.succ t_n), from (eq_or_lt_of_le h_τ₂_wst_nondec),
         let h_τ₂_constraint_l := τ₁.constraint_l (nat.succ t_n),
 
@@ -160,7 +161,7 @@ begin
             simp, simp at *, rw mul_add at *,
 
             apply (le_trans h_τ₂_constraint_l), rw mul_add,
-            rw ←hc, rw ←hc at *, rw add_comm,
+            rw add_comm,
             have : (nat.succ t_n) = t_n + 1, by simp, rw this,
             exact (add_le_add_left h_cond_waste (τ₁.wst (t_n + 1 - τ₁.D))),
         }
