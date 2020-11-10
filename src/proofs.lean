@@ -24,7 +24,7 @@ structure Trace :=
     (constraint_l : ∀t, out t ≥ C * ↑(t - D) - wst (t - D))
 
     (cond_waste :
-        ∀t, wst t < wst (t+1) 
+        ∀t, wst t < wst (t + 1) 
         → inp (1 + t) ≤ C * ↑(1 + t) - wst (1 + t))
     
     (out_le_inp : ∀t, out t ≤ inp t)
@@ -70,6 +70,53 @@ end Trace
 
 theorem trace_composes :
     ∀(τ₁ τ₂ : Trace),
+        τ₁.out = τ₂.inp
+    → ∃(τₛ : Trace),
+        τₛ.C = τ₂.C ∧
+        τₛ.D = τ₁.D + τ₂.D ∧
+        τₛ.inp = τ₁.inp ∧
+        τₛ.out = τ₂.out :=
+begin
+    intros τ₁ τ₂ h₁₂,
+    -- We will set τₛ.wst t = τ₂.wst (t - τ₁.D) so that their 
+    -- lower bounds conincide. Let's start proving the theorems 
+    -- we need when we finally make the existential quantifier
+    
+    -- constraint_u
+    have h_constraint_u : ∀t, τ₂.out t ≤ τ₁.C * t - τ₁.wst t :=
+    begin
+        intro t,
+        calc
+            τ₂.out t ≤ τ₂.inp t : τ₂.out_le_inp t
+                 ... = τ₁.out t : by rw h₁₂
+                 ... ≤ τ₁.C * t - τ₁.wst t : τ₁.constraint_u t
+    end,
+
+    -- Prove lower of τ₁ ≤ upper of τ₂ by induction on t
+    have h_cond_waste :
+        ∀t, τ₂.wst t < τ₂.wst (t + 1) 
+            → τ₁.inp (1 + t) ≤ τ₂.C * ↑(1 + t) - τ₂.wst (1 + t) :=
+    begin
+        intros t h_wst,
+        rw ←Trace.upper,
+        have h_τ₁_lower_le_τ₂_upper : τ₁.lower (1 + t) ≤ τ₂.upper (1 + t) :=
+        begin
+            let h₀ := τ₂.cond_waste t h_wst,
+            rw ←Trace.upper at h₀,
+            rw ←h₁₂ at h₀,
+            let h₁ := τ₁.constraint_l (1 + t),
+            rw ←Trace.lower at h₁,
+            rw ge_iff_le at h₁,
+            exact (le_trans h₁ h₀),
+        end,
+        sorry,
+    end,
+
+    sorry,
+end
+
+theorem trace_composes_τ₁_le_τ₂ :
+    ∀(τ₁ τ₂ : Trace),
         τ₁.C ≤ τ₂.C ∧
         τ₁.out = τ₂.inp
     → ∃(τₛ : Trace),
@@ -107,9 +154,7 @@ begin
         induction t,
         -- induction: t = 0
         simp, rw τ₁.zero_wst, rw τ₂.zero_wst,
-        --simp, apply mul_nonneg', linarith [τ₁.pos_C], exact h_τ₁_nonneg_D,
-        -- induction: t > 0
-
+        
         by_cases h_t_vs_D : (t_n < τ₁.D),
         -- t_n < τ₁.D
         have h_t_le_D := nat.sub_eq_zero_of_le h_t_vs_D,
@@ -223,7 +268,7 @@ begin
         -- Now main part of the proof is done. Tie up some loose ends
         linarith, linarith,
     end,
-    -- Proved a slightly different version. Fix it now
+    -- Proved a slightly different version above. Fix it now
     have h_constraint_l : ∀ (t : ℕ), τ₂.out t ≥ τ₁.C * ↑(t - (τ₁.D + τ₂.D)) - τ₁.wst (t - (τ₁.D + τ₂.D)) :=
     begin
         intro t, specialize (h_constraint_l t),
@@ -251,9 +296,6 @@ begin
         rw ←h₁₂,
         exact (τ₁.out_le_inp t),
     },
-
-    -- Note: τₛ.cond_waste = τ₁.cond_waste
-    --have h_cond_waste : 
 
     have h_τₛ_nonneg_D : τ₁.D + τ₂.D ≥ 0, 
         by linarith [τ₁.nonneg_D, τ₂.nonneg_D],
