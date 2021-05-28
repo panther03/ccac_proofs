@@ -1,21 +1,22 @@
 import data.real.basic
+import data.bool
 
 -- Some obvious theorems I couldn't prove
 
-theorem nat_real_le : ∀(x y : ℕ), x ≤ y → (↑x : ℝ) ≤ (↑y : ℝ) := sorry
+theorem nat_real_le : ∀(x y : ℕ), x ≤ y → (↑x : ℚ) ≤ (↑y : ℚ) := sorry
 
-theorem nat_real_add : ∀(x y : ℕ), ↑(x + y) = (↑x : ℝ) + ↑y := by {intro, simp}
+theorem nat_real_add : ∀(x y : ℕ), ↑(x + y) = (↑x : ℚ) + ↑y := by {intro, simp}
 
-theorem nat_real_succ : ∀x:ℕ, (↑(nat.succ x) : ℝ) = 1 + ↑x := by {intro x, simp}
+theorem nat_real_succ : ∀x:ℕ, (↑(nat.succ x) : ℚ) = 1 + ↑x := by {intro x, simp}
 
-theorem nat_real_sub : ∀(x y : ℕ), y ≤ x → ↑(x - y) = (↑x: ℝ) - ↑y := sorry
+theorem nat_real_sub : ∀(x y : ℕ), y ≤ x → ↑(x - y) = (↑x: ℚ) - ↑y := sorry
 
 theorem nat_le_succ_sub : ∀(x y : ℕ), x - y ≤ (nat.succ x) - y := sorry
 
 theorem nat_sub_add : ∀(x y z : ℕ), x - (y + z) = x - y - z := sorry
 
 structure Trace :=
-    (C : ℝ) (D : ℕ) (out inp wst: ℕ → ℝ)
+    (C : ℚ) (D : ℕ) (out inp wst: ℕ → ℚ)
 
     (pos_C : C > 0)
     (nonneg_D : D ≥ 0)
@@ -24,20 +25,20 @@ structure Trace :=
     (constraint_l : ∀t, out t ≥ C * ↑(t - D) - wst (t - D))
 
     (cond_waste :
-        ∀t, wst t < wst (t + 1) 
+        ∀t, wst t < wst (t + 1)
         → inp (1 + t) ≤ C * ↑(1 + t) - wst (1 + t))
-    
+
     (out_le_inp : ∀t, out t ≤ inp t)
-    
+
     (monotone_out : monotone out)
     (monotone_inp : monotone inp)
     (monotone_wst : monotone wst)
-    
+
     (zero_out : out 0 = 0)
     (zero_inp : inp 0 = 0)
     (zero_wst : wst 0 = 0)
 
--- Useful lemmas    
+-- Useful lemmas
 namespace Trace
     def upper (τ : Trace) (t : ℕ) := τ.C * t - τ.wst t
     def lower (τ : Trace) (t : ℕ) := τ.C * ↑(t - τ.D) - τ.wst (t - τ.D)
@@ -46,7 +47,7 @@ namespace Trace
     begin
         intros τ t,
         induction t,
-        rw τ.zero_out, apply (le_trans t_ih), 
+        rw τ.zero_out, apply (le_trans t_ih),
         apply τ.monotone_out, exact nat.le_succ t_n,
     end
 
@@ -54,7 +55,7 @@ namespace Trace
     begin
         intros τ t,
         induction t,
-        rw τ.zero_wst, apply (le_trans t_ih), 
+        rw τ.zero_wst, apply (le_trans t_ih),
         apply τ.monotone_wst, exact nat.le_succ t_n,
     end
 
@@ -68,52 +69,118 @@ namespace Trace
     end
 end Trace
 
-theorem trace_composes :
+section TraceComposes
+    -- variables (τ₁ τ₂ : ℕ → ℚ)
+    -- We will τₛ.wst as follows. There are two states.
+    -- State false: If τ₁ and τ₂ intersect, track τ₁ to the best of
+    --   our ability (since τₛ.C ≤ τ₁.C, we might not be able to
+    --   track perfectly). If τ₁ and τ₂ stop intersecting, transition
+    --   to State 2
+    -- State true: Stop wasting transmission opportunities until
+    --    τ₁.upper touches τₛ.upper (at which point, τ₁ and τ₂ will
+    --    also intersect). Then transition to State 1
+
+    def compose_waste (τ₁ τ₂ : Trace) : ℕ → (ℚ × bool)
+    | 0    := (0, false)
+    | (nat.succ t') :=
+        let p := (compose_waste t') in
+        if p.2 then
+            if τ₂.C * ↑t'.succ - p.1 ≤ τ₁.upper t'.succ then
+                (p.1, true) else
+                (τ₁.wst t'.succ, false)
+        else
+            if τ₁.lower t'.succ ≤ τ₂.upper t'.succ then
+                (τ₁.wst t'.succ, false) else
+                (p.1, true)
+
+    theorem trace_τₛ_lower_le_τ₂_lower :
     ∀(τ₁ τ₂ : Trace),
+        τ₁.C ≥ τ₂.C ∧
+        τ₁.out = τ₂.inp
+    → ∀t, τ₂.C * ↑(t - (τ₁.D + τ₂.D)) - (compose_waste τ₁ τ₂ (t - (τ₁.D + τ₂.D))).fst ≤ τ₂.lower t :=
+    begin
+        intros τ₁ τ₂ h, cases h with hc h₁₂,
+        intros t,
+        unfold Trace.lower,
+
+/-         -- We will do an induction on t - (τ₁.D + τ₂.D). That way
+        -- we deal away with annoying corner cases when t ≤ τ₁.D + τ₂.D
+        let t' : ℕ := t - (τ₁.D + τ₂.D),
+        have h_t' : t' = t - (τ₁.D + τ₂.D), by reflexivity,
+        have h_t'D : t ≥ τ₁.D + τ₂.D → t' + τ₁.D = t - τ₂.D, by {
+            sorry,
+        },
+        by_cases h_t'D_case : t < τ₁.D + τ₂.D,
+        -- Not dealing with this nonsense right now
+        sorry,
+        simp at h_t'D_case,
+        rw ←h_t', rw ←(h_t'D h_t'D_case),
+ -/
+        induction t,
+        -- t = 0
+        rw nat.zero_sub, unfold compose_waste, simp,
+        rw τ₂.zero_wst,
+        -- Induction step in t
+
+        --have h_tp_succ : tp.succ = t_n.succ - (τ₁.D + τ₂.D), by
+        rw ←h_tp, rw ←h_tp at t_ih,
+
+        --unfold compose_waste, --(compose_waste τ₁ τ₂ (nat.succ t_n - (τ₁.D + τ₂.D))),
+
+
+        destruct (compose_waste τ₁ τ₂ t_n), simp,
+        introv, intro h,
+        have h_fst : fst = (compose_waste τ₁ τ₂ t_n).fst, by rw h,
+        have h_snd : snd = (compose_waste τ₁ τ₂ t_n).snd, by rw h,
+        clear h,
+        rw ←h_fst, rw ←h_snd, rw ←h_fst at t_ih,
+
+        by_cases hp_snd : snd = tt,
+        -- Case: p.snd = tt
+            rw hp_snd, simp,
+
+            cases (le_or_lt (τ₂.C * (1 + ↑t_n)) (fst + Trace.upper τ₁ (nat.succ t_n)))
+                with h_cond_le h_cond_lt,
+
+            -- Case: le
+            simp [(eq_true_intro h_cond_le)],
+
+            --simp_rw (eq_true_intro h_cond_le),
+            sorry,
+        -- Case: p.snd = ff
+            sorry,
+
+        sorry,
+    end
+
+    theorem trace_composes_τ₁_ge_τ₂ :
+    ∀(τ₁ τ₂ : Trace),
+        τ₁.C ≥ τ₂.C ∧
         τ₁.out = τ₂.inp
     → ∃(τₛ : Trace),
         τₛ.C = τ₂.C ∧
         τₛ.D = τ₁.D + τ₂.D ∧
-        τₛ.inp = τ₁.inp ∧
-        τₛ.out = τ₂.out :=
-begin
-    intros τ₁ τ₂ h₁₂,
-    -- We will set τₛ.wst t = τ₂.wst (t - τ₁.D) so that their 
-    -- lower bounds conincide. Let's start proving the theorems 
-    -- we need when we finally make the existential quantifier
-    
-    -- constraint_u
-    have h_constraint_u : ∀t, τ₂.out t ≤ τ₁.C * t - τ₁.wst t :=
+        ∀t, (τₛ.inp t = τ₁.inp (t - τ₁.D) ∧
+             τₛ.out t = τ₂.out (t - τ₁.D)) :=
     begin
-        intro t,
-        calc
-            τ₂.out t ≤ τ₂.inp t : τ₂.out_le_inp t
-                 ... = τ₁.out t : by rw h₁₂
-                 ... ≤ τ₁.C * t - τ₁.wst t : τ₁.constraint_u t
-    end,
+        intros τ₁ τ₂ h, cases h with hc h₁₂,
 
-    -- Prove lower of τ₁ ≤ upper of τ₂ by induction on t
-    have h_cond_waste :
-        ∀t, τ₂.wst t < τ₂.wst (t + 1) 
-            → τ₁.inp (1 + t) ≤ τ₂.C * ↑(1 + t) - τ₂.wst (1 + t) :=
-    begin
-        intros t h_wst,
-        rw ←Trace.upper,
-        have h_τ₁_lower_le_τ₂_upper : τ₁.lower (1 + t) ≤ τ₂.upper (1 + t) :=
+        -- The only thing we can set is τₛ.wst. We are going to set
+        -- it to (waste τ₁ τ₂)
+        let wst := (compose_waste τ₁ τ₂),
+        let C := τ₂.C,
+
+        have h_constraint_u : ∀t, τ₂.out (t - τ₁.D) ≤ τ₁.C * t - (wst (t - τ₁.D)).fst :=
         begin
-            let h₀ := τ₂.cond_waste t h_wst,
-            rw ←Trace.upper at h₀,
-            rw ←h₁₂ at h₀,
-            let h₁ := τ₁.constraint_l (1 + t),
-            rw ←Trace.lower at h₁,
-            rw ge_iff_le at h₁,
-            exact (le_trans h₁ h₀),
+            intro t,
+            induction t,
+            -- t = 0
+
+            sorry,
         end,
         sorry,
-    end,
-
-    sorry,
-end
+    end
+end TraceComposes
 
 theorem trace_composes_τ₁_le_τ₂ :
     ∀(τ₁ τ₂ : Trace),
@@ -126,7 +193,7 @@ theorem trace_composes_τ₁_le_τ₂ :
         τₛ.out = τ₂.out :=
 begin
     intros τ₁ τ₂ h, cases h with hc h₁₂,
-    -- We will set τₛ.wst = τ₁.wst. Let's start proving the theorems 
+    -- We will set τₛ.wst = τ₁.wst. Let's start proving the theorems
     -- we need when we finally make the existential quantifier
 
     -- constraint_u
@@ -140,8 +207,8 @@ begin
     end,
 
     -- helpful lemmas: Ds are non-negative
-    have h_τ₁_nonneg_D : 0 ≤ (↑τ₁.D : ℝ), from (nat_real_le 0 τ₁.D τ₁.nonneg_D),
-    have h_τ₂_nonneg_D : 0 ≤ (↑τ₂.D : ℝ), from (nat_real_le 0 τ₂.D τ₂.nonneg_D),
+    have h_τ₁_nonneg_D : 0 ≤ (↑τ₁.D : ℚ), from (nat_real_le 0 τ₁.D τ₁.nonneg_D),
+    have h_τ₂_nonneg_D : 0 ≤ (↑τ₂.D : ℚ), from (nat_real_le 0 τ₂.D τ₂.nonneg_D),
 
 
     -- Prove lower of τ₁ ≤ upper of τ₂ by induction on t
@@ -154,7 +221,7 @@ begin
         induction t,
         -- induction: t = 0
         simp, rw τ₁.zero_wst, rw τ₂.zero_wst,
-        
+
         by_cases h_t_vs_D : (t_n < τ₁.D),
         -- t_n < τ₁.D
         have h_t_le_D := nat.sub_eq_zero_of_le h_t_vs_D,
@@ -185,14 +252,14 @@ begin
         { -- τ₂.wst does not increase
 
             rw ←h_τ₂_wst_cond,
-            have h_nat_real_t_n : (↑(nat.succ t_n) : ℝ) = 1 + ↑t_n, from nat_real_succ t_n,
+            have h_nat_real_t_n : (↑(nat.succ t_n) : ℚ) = 1 + ↑t_n, from nat_real_succ t_n,
 
             rw (nat_real_succ t_n),
 
             -- Apply distributive laws. `linarith` cannot infer this
             rw mul_sub at t_ih,
             rw mul_sub, rw mul_add, rw mul_add,
-            
+
             linarith,
         },
         { -- τ₂.wst increases
@@ -225,8 +292,8 @@ begin
         let h_t_vs_D := nat_real_le _ _ h_t_vs_D,
         rw nat_real_add at h_t_vs_D,
         let h_τ₂_C_pos := τ₁.pos_C,
-        have h₀ : ↑t + (-(↑τ₁.D : ℝ) + -↑(τ₂.D)) ≤ 0, by linarith,
-        have h₁ : τ₁.C * (↑t + (-(↑τ₁.D : ℝ) + -↑(τ₂.D))) ≤ 0, 
+        have h₀ : ↑t + (-(↑τ₁.D : ℚ) + -↑(τ₂.D)) ≤ 0, by linarith,
+        have h₁ : τ₁.C * (↑t + (-(↑τ₁.D : ℚ) + -↑(τ₂.D))) ≤ 0,
             by exact linarith.mul_nonpos h₀ h_τ₂_C_pos,
         apply (le_trans h₁),
         apply (τ₂.out_nonneg t),
@@ -260,9 +327,9 @@ begin
         rw nat_sub_add at h_lower_le_upper,
 
         -- Apply distributive law everywhere
-        rw nat_real_add at *, 
-        rw mul_sub at *, rw mul_sub at *, rw mul_add at *, 
-        
+        rw nat_real_add at *,
+        rw mul_sub at *, rw mul_sub at *, rw mul_add at *,
+
         linarith,
 
         -- Now main part of the proof is done. Tie up some loose ends
@@ -291,17 +358,17 @@ begin
 
     -- Now prove some of the little theorems
     have h_out_le_inp : ∀t, τ₂.out t ≤ τ₁.inp t, {
-        intro t, 
+        intro t,
         apply (le_trans (τ₂.out_le_inp t)),
         rw ←h₁₂,
         exact (τ₁.out_le_inp t),
     },
 
-    have h_τₛ_nonneg_D : τ₁.D + τ₂.D ≥ 0, 
+    have h_τₛ_nonneg_D : τ₁.D + τ₂.D ≥ 0,
         by linarith [τ₁.nonneg_D, τ₂.nonneg_D],
 
     -- Finally construct our witness
-    let τₛ := Trace.mk τ₁.C (τ₁.D + τ₂.D) τ₂.out τ₁.inp τ₁.wst 
+    let τₛ := Trace.mk τ₁.C (τ₁.D + τ₂.D) τ₂.out τ₁.inp τ₁.wst
         τ₁.pos_C h_τₛ_nonneg_D
         h_constraint_u
         h_constraint_l
