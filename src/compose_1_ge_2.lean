@@ -1,7 +1,4 @@
-import data.real.basic
-import data.bool
-
-import trace
+import src.trace
 
 namespace Compose1Ge2
 
@@ -11,7 +8,7 @@ inductive WstState
 
 -- Helper function. If (τₛ.w (t+1)) = this value, then τₛ.upper = τ₁.upper
 def track (τ₁ τ₂ : Trace) (wst_cur : ℚ) (t : ℕ) : ℚ :=
-  let wst := τ₁.wst (t+1) - (τ₁.C - τ₂.C) * ↑t in
+  let wst := τ₁.wst (t+1) - (τ₁.C - τ₂.C) * ↑t
     if wst_cur > wst then wst_cur else wst
 
 -- Make all propositions decidable
@@ -20,21 +17,53 @@ def track (τ₁ τ₂ : Trace) (wst_cur : ℚ) (t : ℕ) : ℚ :=
 
 -- This is how we derive τₛ.w
 def wst_compose (τ₁ τ₂ : Trace) : ℕ → (ℚ × WstState)
-  | 0 := (0, WstState.Tracking)
-  | (nat.succ t) :=
-    let ⟨wst, s⟩ := (wst_compose t) in
+  | 0 => (0, WstState.Tracking)
+  | (t + 1) =>
+    let ⟨wst, s⟩ := (wst_compose τ₁ τ₂ t)
     match s with
-    | WstState.Tracking :=
+    | WstState.Tracking =>
       if τ₁.lower (1 + t) ≥ τ₂.upper 1 + t
       then (wst, WstState.NoWst)
       else (track τ₁ τ₂ wst t, WstState.Tracking)
-    | WstState.NoWst :=
+    | WstState.NoWst =>
       if τ₂.C * ↑t - wst + τ₂.C ≥ τ₁.upper (1 + t)
       then (track τ₁ τ₂ wst t, WstState.Tracking)
       else (wst, WstState.NoWst)
-    end
 
-set_option trace.check true
+structure InfB where
+  -- The queue size itself
+  B: ℚ
+  -- Queue size is positive
+  pos_B: B > 0
+  -- And causes no loss
+  noloss: ∀ (inp los wst: ℕ → ℚ) (C: ℚ) (t: ℕ), inp t - los t ≤ C * ↑t - (wst t) + B
+
+def t_D: ℕ := 3
+
+lemma noloss_cond_los: ∀ (IB: InfB) (wst inp: ℕ → ℚ) (C: ℚ) (t: ℕ), 0 < 0 -> (inp (1 + t) - 0) > C * ↑t - (wst t) + IB.B := by
+  intros IB wst inp C t contr
+  linarith [contr]
+
+lemma flat_monotonic: Monotone (fun _: ℕ => 0) := by
+  unfold Monotone
+  intros
+  simp
+
+def t1_C: ℚ := 2
+
+def t1_wst (C1: ℚ): ℕ -> ℚ
+  | 0 => 0
+  | _ => C1
+
+def t1_line (C1: ℚ) (t: ℕ) := (↑t * C1) - (t1_wst C1 t)
+
+lemma t1_wst_monotonic: Monotone (t1_wst t1_C) := by
+  unfold Monotone t1_C
+  intros x1 x2
+  induction x2 <;> intros Hx1 <;> sorry
+
+
+/-
 theorem trace_composes_τ₁_ge_τ₂ :
     ∀(τ₁ τ₂ : Trace),
         τ₁.C ≥ τ₂.C ∧
@@ -73,6 +102,6 @@ begin
   end,
 
   sorry,
-end
+end-/
 
 end Compose1Ge2
