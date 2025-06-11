@@ -236,7 +236,8 @@ lemma compose_counterexample (IB: InfB): ∃ (τ₁ τ₂: Trace),
   all_goals {
     exists 2
     simp [track_paper, track_ours, wst_compose, Trace.lower, Trace.upper, le_refl, Nat.le_step]
-    sorry
+    norm_num
+    decide
   }
 
 /-
